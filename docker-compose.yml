@@ -1,9 +1,6 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
-    container_name: express-prisma-db
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: express_db
@@ -21,7 +18,6 @@ services:
 
   api:
     build: .
-    container_name: express-prisma-api
     environment:
       DATABASE_URL: "mysql://appuser:apppassword@db:3306/express_db?schema=public"
       NODE_ENV: production
@@ -30,6 +26,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - api
     restart: unless-stopped
 
 volumes:
