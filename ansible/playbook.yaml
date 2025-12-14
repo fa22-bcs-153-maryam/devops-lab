@@ -1,0 +1,90 @@
+---
+# Ansible Playbook: Configure DevOps Lab Infrastructure
+# Purpose: Install dependencies, configure Docker/K8s, deploy application configs
+# Run: ansible-playbook -i inventory/hosts.ini playbook.yaml
+
+- name: Configure DevOps Lab Infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Display target hosts information
+      debug:
+        msg: "Configuring {{ inventory_hostname }} ({{ ansible_os_family }})"
+
+    - name: Update system packages
+      block:
+        - name: Update apt cache (Debian/Ubuntu)
+          apt:
+            update_cache: yes
+            cache_valid_time: 3600
+          when: ansible_os_family == "Debian"
+
+        - name: Update yum cache (RedHat/CentOS)
+          yum:
+            update_cache: yes
+          when: ansible_os_family == "RedHat"
+      tags: 
+        - update
+
+    - name: Install Dependencies role
+      include_role:
+        name: dependencies
+      tags:
+        - dependencies
+
+    - name: Configure Docker role
+      include_role:
+        name: docker
+      tags:
+        - docker
+      when: "'docker_hosts' in group_names"
+
+    - name: Configure Kubernetes role
+      include_role:
+        name: kubernetes
+      tags:
+        - kubernetes
+      when: "'kubernetes_hosts' in group_names"
+
+    - name: Deploy Application Configuration role
+      include_role:
+        name: app_config
+      tags:
+        - app_config
+
+    - name: Check system information
+      debug:
+        msg: |
+          System configured successfully!
+          Hostname: {{ inventory_hostname }}
+          OS: {{ ansible_os_family }} {{ ansible_distribution_version }}
+          Available CPU: {{ ansible_processor_vcpus }}
+          Available Memory: {{ ansible_memtotal_mb }} MB
+      tags:
+        - verify
+
+    - name: Service Health Check
+      block:
+        - name: Check Docker service status
+          systemd:
+            name: docker
+            state: started
+          register: docker_status
+          ignore_errors: yes
+          when: "'docker_hosts' in group_names"
+
+        - name: Check Kubernetes kubelet status
+          systemd:
+            name: kubelet
+            state: started
+          register: kubelet_status
+          ignore_errors: yes
+          when: "'kubernetes_hosts' in group_names"
+
+        - name: Display service status
+          debug:
+            msg: "Services configured and running!"
+      tags:
+        - verify

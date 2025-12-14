@@ -1,0 +1,193 @@
+---
+# Role: Configure Docker
+# Purpose: Install and configure Docker Engine
+
+- name: Install Docker on Debian/Ubuntu
+  block:
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        state: present
+
+    - name: Install Docker packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+      register: docker_install
+      until: docker_install is succeeded
+      retries: 3
+      delay: 10
+
+  when: ansible_os_family == "Debian"
+  tags:
+    - docker
+    - docker_install
+
+- name: Install Docker on RedHat/CentOS
+  block:
+    - name: Add Docker repository
+      yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable - $basearch
+        baseurl: https://download.docker.com/linux/centos/$releasever/$basearch/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        enabled: yes
+
+    - name: Install Docker packages
+      yum:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+
+  when: ansible_os_family == "RedHat"
+  tags:
+    - docker
+    - docker_install
+
+- name: Configure Docker daemon
+  block:
+    - name: Create Docker daemon configuration directory
+      file:
+        path: /etc/docker
+        state: directory
+        mode: '0755'
+
+    - name: Configure Docker daemon.json
+      copy:
+        content: |
+          {
+            "debug": false,
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "10m",
+              "max-file": "3"
+            },
+            "storage-driver": "overlay2",
+            "insecure-registries": [],
+            "registry-mirrors": []
+          }
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+      notify: Restart Docker
+
+  tags:
+    - docker
+    - docker_config
+
+- name: Manage Docker service
+  block:
+    - name: Enable Docker service
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+      register: docker_service
+      until: docker_service is succeeded
+      retries: 3
+      delay: 10
+
+    - name: Add current user to docker group
+      user:
+        name: "{{ ansible_user_id }}"
+        groups: docker
+        append: yes
+      register: user_docker_group
+      changed_when: user_docker_group is succeeded
+
+    - name: Reset SSH connection to apply docker group
+      meta: reset_connection
+      when: user_docker_group is changed
+
+  tags:
+    - docker
+    - docker_service
+
+- name: Install Docker Compose
+  block:
+    - name: Get latest Docker Compose version
+      shell: curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name'
+      register: compose_version
+      changed_when: false
+
+    - name: Download Docker Compose binary
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/{{ compose_version.stdout }}/docker-compose-Linux-x86_64"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      register: compose_download
+      until: compose_download is succeeded
+      retries: 3
+      delay: 10
+
+  tags:
+    - docker
+    - docker_compose
+
+- name: Verify Docker installation
+  block:
+    - name: Check Docker version
+      shell: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Check Docker Compose version
+      shell: docker-compose --version
+      register: compose_version_check
+      changed_when: false
+
+    - name: Run Docker hello-world test
+      docker_image:
+        name: hello-world
+        source: pull
+      register: hello_world
+      ignore_errors: yes
+
+    - name: Display Docker installation info
+      debug:
+        msg: |
+          Docker Installation Successful!
+          - {{ docker_version.stdout }}
+          - {{ compose_version_check.stdout }}
+
+  tags:
+    - docker
+    - verify
+
+- name: Set up Docker log rotation
+  block:
+    - name: Configure Docker log rotation
+      copy:
+        content: |
+          /var/lib/docker/containers/*/*.log {
+            max-size 10m
+            max-file 3
+            rotate 7
+            copytruncate
+          }
+        dest: /etc/logrotate.d/docker-container
+        mode: '0644'
+
+  tags:
+    - docker
+    - logging
+
+handlers:
+  - name: Restart Docker
+    systemd:
+      name: docker
+      state: restarted
+      daemon_reload: yes

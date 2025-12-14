@@ -1,0 +1,50 @@
+# Global variables for all hosts
+
+---
+
+# System settings
+system_timezone: UTC
+system_ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+
+# Application defaults
+app_name: devops-lab
+app_version: 1.0.0
+app_environment: development
+
+# Server settings
+api_port: 4000
+api_workers: 4
+
+# Database settings
+db_host: localhost
+db_port: 5432
+db_name: devops_lab
+db_user: postgres
+# db_password: should be set in vault or as extra vars
+
+# Redis settings
+redis_host: localhost
+redis_port: 6379
+
+# Docker settings
+docker_registry: docker.io
+docker_image_api: devops-lab-api
+docker_image_frontend: devops-lab-frontend
+docker_image_tag: latest
+
+# Kubernetes settings
+kubernetes_cluster_name: devops-lab-prod
+kubernetes_namespace: default
+kubernetes_version: "1.28"
+
+# Logging
+enable_logging: true
+log_level: info
+log_format: json
+
+# Performance tuning
+max_file_descriptors: 65536
+max_processes: 4096
