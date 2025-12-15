@@ -1,0 +1,146 @@
+---
+# Role: Install system dependencies
+# Purpose: Install base packages needed by all hosts
+
+- name: Install dependencies on Debian/Ubuntu
+  block:
+    - name: Install basic packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - net-tools
+          - build-essential
+          - python3-pip
+          - jq
+          - unzip
+          - ca-certificates
+          - apt-transport-https
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Install Node.js and npm
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: present
+      register: nodejs_install
+      until: nodejs_install is succeeded
+      retries: 3
+      delay: 10
+
+    - name: Upgrade npm to latest version
+      shell: npm install -g npm@latest
+      changed_when: false
+
+  when: ansible_os_family == "Debian"
+  tags:
+    - dependencies
+    - packages
+    - nodejs
+
+- name: Install dependencies on RedHat/CentOS
+  block:
+    - name: Install basic packages
+      yum:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - net-tools
+          - gcc
+          - make
+          - python3-pip
+          - jq
+          - unzip
+        state: present
+
+    - name: Add Node.js repository
+      shell: curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+      changed_when: false
+
+    - name: Install Node.js and npm
+      yum:
+        name:
+          - nodejs
+        state: present
+
+  when: ansible_os_family == "RedHat"
+  tags:
+    - dependencies
+    - packages
+    - nodejs
+
+- name: Install Python packages
+  block:
+    - name: Upgrade pip
+      pip:
+        name:
+          - pip
+          - setuptools
+          - wheel
+        state: latest
+
+    - name: Install useful Python packages
+      pip:
+        name:
+          - boto3
+          - botocore
+          - kubernetes
+          - docker
+          - requests
+          - jinja2
+        state: present
+
+  tags:
+    - dependencies
+    - python
+
+- name: Create application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /opt/devops-lab
+    - /opt/devops-lab/app
+    - /var/log/devops-lab
+    - /etc/devops-lab
+  tags:
+    - directories
+
+- name: Verify installation
+  block:
+    - name: Check Node.js version
+      shell: node --version
+      register: node_version
+      changed_when: false
+
+    - name: Check npm version
+      shell: npm --version
+      register: npm_version
+      changed_when: false
+
+    - name: Check Python version
+      shell: python3 --version
+      register: python_version
+      changed_when: false
+
+    - name: Display installed versions
+      debug:
+        msg: |
+          Installed versions:
+          - Node.js: {{ node_version.stdout }}
+          - npm: {{ npm_version.stdout }}
+          - Python: {{ python_version.stdout }}
+
+  tags:
+    - verify
