@@ -150,6 +150,11 @@ app.delete('/users/:id', async (req: Request, res: Response) => {
     }
 });
 
+// CI/CD basic health check (no external dependencies)
+app.get("/healthz", (req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
     try {
