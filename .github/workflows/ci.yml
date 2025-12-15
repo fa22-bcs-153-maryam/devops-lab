@@ -142,7 +142,7 @@ jobs:
         run: terraform plan -input=false
 
   deploy:
-    name: Deploy to Kubernetes (Simulated)
+    name: Deploy to Kubernetes 
     runs-on: ubuntu-latest
     needs: terraform_plan
     if: github.ref == 'refs/heads/main'
