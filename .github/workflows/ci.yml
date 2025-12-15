@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -50,11 +50,9 @@ jobs:
       - name: Type-check (tsc)
         run: npx tsc --noEmit
 
-      - name: Security audit (fail on high)
+      - name: Security audit
         run: |
           npm audit --audit-level=high || true
-          # We don't fail the job on audit by default, but the command above
-          # will print issues. Change to remove '|| true' to fail CI on high sev.
 
   test:
     name: Test (with DB service)
@@ -71,7 +69,10 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -prootpassword" --health-interval=10s --health-timeout=5s --health-retries=5
+          --health-cmd="mysqladmin ping -h localhost -prootpassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       - name: Checkout
@@ -97,7 +98,7 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Apply migrations (deploy)
+      - name: Apply migrations
         run: npx prisma migrate deploy
 
       - name: Build app
@@ -114,11 +115,12 @@ jobs:
 
       - name: API smoke test - create user
         run: |
-          curl -s -X POST http://127.0.0.1:4000/users -H "Content-Type: application/json" -d '{"name":"ci","email":"ci@example.com"}'
+          curl -s -X POST http://127.0.0.1:4000/users \
+          -H "Content-Type: application/json" \
+          -d '{"name":"ci","email":"ci@example.com"}'
 
       - name: API smoke test - list users
-        run: |
-          curl -s http://127.0.0.1:4000/users
+        run: curl -s http://127.0.0.1:4000/users
 
   build_image:
     name: Build Docker Image
@@ -134,31 +136,41 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image (tagged by SHA)
+      - name: Build and push image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: |
-            fa22bcs153/prismaboilerplate:${{ github.sha }}
+          tags: fa22bcs153/prismaboilerplate:${{ github.sha }}
 
-  deploy:
-    name: Deploy (only main)
+  deploy_k8s:
+    name: Deploy to Kubernetes (Step 6)
     runs-on: ubuntu-latest
     needs: build_image
     if: github.ref == 'refs/heads/main'
+
     steps:
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          version: v1.29.0
 
-      - name: Pull image by SHA and retag as latest
-        run: |
-          docker pull fa22bcs153/prismaboilerplate:${{ github.sha }}
-          docker tag fa22bcs153/prismaboilerplate:${{ github.sha }} fa22bcs153/prismaboilerplate:latest
+      - name: Create Kind Cluster
+        uses: helm/kind-action@v1.10.0
 
-      - name: Push latest tag
+      - name: Pull Docker image
+        run: docker pull fa22bcs153/prismaboilerplate:${{ github.sha }}
+
+      - name: Load image into Kind
+        run: kind load docker-image fa22bcs153/prismaboilerplate:${{ github.sha }}
+
+      - name: Deploy Kubernetes manifests
+        run: kubectl apply -f k8s/
+
+      - name: Verify deployment
         run: |
-          docker push fa22bcs153/prismaboilerplate:latest
+          kubectl get pods
+          kubectl get services
