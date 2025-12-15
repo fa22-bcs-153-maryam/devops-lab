@@ -119,28 +119,6 @@ jobs:
           push: true
           tags: fa22bcs153/prismaboilerplate:${{ github.sha }}
 
-  terraform_plan:
-    name: Terraform Plan
-    runs-on: ubuntu-latest
-    needs: build_image
-    continue-on-error: true
-    steps:
-    - uses: actions/checkout@v4
-
-    - uses: hashicorp/setup-terraform@v3
-
-    - name: Terraform Init
-      working-directory: infra
-      run: terraform init -input=false > /dev/null
-
-    - name: Terraform Validate
-      working-directory: infra
-      run: terraform validate
-
-    - name: Terraform Plan (Non-blocking, silent)
-      working-directory: infra
-      run: terraform plan -input=false -no-color > /dev/null || true
-  
 
   terraform_plan:
     name: Terraform Plan
